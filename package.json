@@ -1,0 +1,38 @@
+{
+  "name": "evoting-mern",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client",
+    "start": "npm run start -w server",
+    "migrate": "npm run migrate -w server",
+    "setup:admin": "npm run setup:admin -w server",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"server/**/*.{js,mjs}\" \"client/src/**/*.{js,jsx}\" \"client/vite.config.js\" \"*.{js,json}\"",
+    "format:check": "prettier --check \"server/**/*.{js,mjs}\" \"client/src/**/*.{js,jsx}\" \"client/vite.config.js\" \"*.{js,json}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "npm run lint && npm run format:check && npm test"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "globals": "^15.15.0",
+    "prettier": "^3.9.9",
+    "vitest": "^2.1.9"
+  }
+}

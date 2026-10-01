@@ -1,0 +1,14 @@
+node_modules
+dist
+backups
+.env
+*.log
+
+# User-uploaded candidate and biometric photos. These are personal data tied to
+# real voters, and the filenames are random but the files are world-readable to
+# anything serving /uploads, so they must never enter version control.
+server/uploads/
+!server/uploads/.gitkeep
+
+# Runtime output from the maintenance scripts
+server/scripts/*.log

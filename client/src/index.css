@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-canvas-light text-slate-800 dark:bg-canvas-dark dark:text-slate-100 antialiased transition-colors duration-300;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white dark:bg-surface-dark border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-semibold rounded-xl px-5 py-2.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-primary-600 hover:bg-primary-700 text-white focus:ring-primary-500;
+  }
+  .btn-secondary {
+    @apply btn bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 focus:ring-slate-400;
+  }
+  .btn-outline {
+    @apply btn border border-primary-600 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30;
+  }
+  .btn-danger {
+    @apply btn bg-danger-500 hover:bg-danger-600 text-white focus:ring-danger-400;
+  }
+  .btn-success {
+    @apply btn bg-success-500 hover:bg-success-600 text-white focus:ring-success-400;
+  }
+  .input {
+    @apply w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition;
+  }
+  .label {
+    @apply block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5;
+  }
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+  }
+  .nav-link {
+    @apply text-slate-600 dark:text-slate-300 transition-colors;
+  }
+  .fade-in-up {
+    @apply animate-fadeInUp;
+  }
+
+  /* --- Admin layout helpers -------------------------------------------------
+     The admin pages are dense tables on desktop. On phones the same markup
+     degrades to stacked blocks, so these carry the shared breakpoints instead
+     of repeating them per page. */
+  .card-pad {
+    @apply p-4 sm:p-6;
+  }
+
+  /* Action buttons become a 2-up grid on phones so long labels ("Bulk Accredit")
+     never overflow, and collapse to an inline row from sm up. */
+  .page-actions {
+    @apply grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center;
+  }
+
+  /* Dense data rows: identity block on top, actions on their own full-width line
+     on phones; a single row from sm up. */
+  .list-row {
+    @apply flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-4;
+  }
+  .list-row-actions {
+    @apply flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end;
+  }
+
+  /* Row-level buttons are visually compact (py-1/py-1.5) which lands them at
+     28px — under a usable touch target. Restore a 40px hit area on phones and
+     let the compact padding govern again from sm up. */
+  .btn-compact {
+    @apply min-h-10 sm:min-h-0;
+  }
+
+  /* Wraps long unbroken tokens (emails, URLs, setting keys) instead of letting
+     them push the layout wider than the viewport. */
+  .break-anywhere {
+    @apply break-words [overflow-wrap:anywhere];
+  }
+
+  /* Chart.js canvas container. Chart.js sizes itself from the parent box, so
+     without an explicit height it derives one from the width (default
+     aspectRatio 2) and the canvas keeps an intrinsic size that widens its grid
+     track past the viewport on phones. A definite height plus min-w-0 lets the
+     chart be laid out by the page instead of the other way round. */
+  .chart-box {
+    @apply relative w-full min-w-0 h-64 sm:h-72 lg:h-80;
+  }
+}
