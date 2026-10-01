@@ -53,7 +53,8 @@ template; the entries that will bite you if you get them wrong:
 | `ALLOWED_ORIGINS` | yes | Must include the exact dev origin (`https://localhost:5173`). CSRF rejects any mutating request whose `Origin` is not on this list, so omitting it makes every POST - register included - fail with "Origin not allowed". |
 | `CLIENT_URL` | yes | Used to build every link in outbound email. Never derived from a request. |
 | `CSP_MODE` | no | `report-only` (default) \| `enforce` \| `off`. Start on report-only: it logs violations without blocking anything, so a wrong directive cannot break reCAPTCHA or the face camera. Move to `enforce` once the console is clean. |
-| `DB_URI` | yes | Falls back to `mongodb://127.0.0.1:27017/evoting`. |
+| `DB_URI` | yes | Falls back to `mongodb://127.0.0.1:27017/evoting`. Must name the database explicitly (`/evoting`) - a pathless URI silently connects to `test`. |
+| `UPLOADS_DIR` | in any deployment | Where candidate and face photos are written. Unset locally, so they stay in `server/uploads`. **Set it to a mounted persistent disk when deployed**, or every deploy deletes every enrolled face. See `render.yaml`. |
 | `RECAPTCHA_SITE_KEY` / `RECAPTCHA_SECRET_KEY` | if reCAPTCHA is on | See the failure mode below. |
 | `RECAPTCHA_FAIL_OPEN` | no | Default `false`. |
 | `MAIL_*` | for email | DB settings in Admin > Settings override these, except the password, which is never seeded from `.env`. |
@@ -121,8 +122,10 @@ client/                     React 18 + Vite 5 + Tailwind 3
   public/models/            face-api.js weights, fetched at runtime, not bundled
 server/                     Express 4 + Mongoose 8, native ESM
   src/config/env.js         typed env, boots or fails loudly
+  .env.example              annotated template
   src/services/             settings, tokens, email, captcha, geofence, faceMatch
   src/middleware/           auth, csrf, upload, error
+render.yaml                 Render Blueprint: one service, disk, env var keys
   src/controllers/          request handlers
   src/routes/               public, auth, admin
   tests/                    Vitest suites
@@ -269,14 +272,80 @@ signature. That reasoning is in `client/src/lib/api.js` and is load-bearing.
 
 ## Deployment
 
-1. `npm run build` and confirm `client/dist` exists.
-2. `NODE_ENV=production` in `server/.env`, with a real `JWT_SECRET` and
-   `ALLOWED_ORIGINS` set to your real origin.
-3. `npm start`. In production the server also serves `client/dist` and falls
-   back to `index.html` for client-side routes.
-4. Set `CSP_MODE=enforce` once the browser console is clean under
-   `report-only`.
-5. `trust proxy` is set to `1`; put exactly one reverse proxy in front.
+The server and the client deploy as **one** Render web service. Express serves
+`client/dist` from the same origin it serves the API from, so there is no CORS
+configuration to get wrong and no second service to keep in step.
 
-Terminate TLS at the proxy. Cookies are `secure` in production, so the app must
-be reached over HTTPS.
+`render.yaml` at the repo root carries the build command, start command, health
+check, disk mount and the non-secret environment variables. Point Render at it
+with **New > Blueprint**.
+
+### Why one service, and not a static site plus an API
+
+Worth stating because "deploy them separately" looks like the obvious split, and
+it cannot work with this client:
+
+- The client calls the API with **relative** paths only
+  (`client/src/lib/api.js` issues `fetch('/api/...')`; there is no API base URL
+  and no `VITE_*` variable anywhere). On a separate host those requests go to the
+  static site, which serves no API. CORS cannot help, because the request never
+  reaches Express to negotiate anything.
+- The CSRF token is read from `document.cookie` (`ev_csrf`), and the cookie is
+  set by the server's domain. Cross-origin, the page cannot read it, so every
+  mutating request fails `Invalid CSRF token` even once CORS is correct.
+- `/uploads` and the 6.7 MB of face-api weights under `/models` are also
+  referenced relatively.
+
+A split deployment would need a `VITE_API_URL`, the CSRF token moved out of the
+cookie and into memory, the server origin added to CSP `connect-src`, and
+`SameSite=None` on the session cookies. Same-origin needs none of that.
+
+### Steps
+
+1. Create the Atlas cluster, and **widen the IP allowlist** to `0.0.0.0/0`.
+   Render egresses from a shifting range of addresses, so a locked-down
+   allowlist fails to connect at random.
+2. Rotate any Atlas password that has ever been committed, and check
+   `server/.env.example` for it. The repository history is permanent.
+3. **Delete any static site currently holding the hostname.** The Blueprint is
+   named `evoting-mern` to take over an existing hostname, and Render will not
+   release the name while another service holds it. There is a window where the
+   app is not served at all, which is fine except mid-election.
+4. Create the Blueprint from `render.yaml`.
+5. Set the `sync: false` variables in the dashboard. `CLIENT_URL` and
+   `ALLOWED_ORIGINS` cannot be set before the service exists, because they need
+   the hostname Render assigns. Both default to `https://localhost:5173`, which
+   is wrong in production: `CLIENT_URL` builds every email link, so password
+   resets would point at a laptop, and `ALLOWED_ORIGINS` is the CSRF allowlist,
+   so without the real origin every POST fails `Origin not allowed`.
+6. Create the first admin from a local checkout pointed at the same `DB_URI`:
+
+   ```bash
+   npm install
+   DB_URI=<the same one Render has> node server/scripts/setup-admin.mjs \
+     --username admin --password '<a real one>' --email you@example.com
+   ```
+
+   This cannot run at deploy time; it is a one-off.
+7. Confirm `https://evoting-mern.onrender.com/api/health` returns
+   `{"ok":true,"db":"connected"}`. `ok` is `false` while the database is
+   unreachable, so this distinguishes a working app from a booting one.
+8. Watch the logs for `[csp]` lines, then set `CSP_MODE=enforce`.
+
+### Notes
+
+- **`plan: starter` is required.** Render does not attach persistent disks to
+  free instances. Without the disk, `server/uploads/` is discarded on every
+  deploy, which deletes every enrolled face photo; each affected voter has to
+  re-enrol by hand. `UPLOADS_DIR` is what makes the mount take effect.
+- **The first request after a deploy is slow.** Free instances sleep after
+  inactivity and cold-start on the next request; a paid instance does not.
+- **Rate limiters are per-process** (see "Known limits"), so they reset on every
+  restart. Render will also spin up more than one instance for a paid plan, and
+  the buckets will diverge between them. Use a shared store if you run more than
+  one.
+- `trust proxy` is set to `1`; Render puts exactly one proxy in front, which is
+  what that value assumes. Cookies are `secure` in production, so the app must
+  be reached over HTTPS.
+- To deploy by hand instead of by Blueprint: `npm ci && npm run build`, then
+  `npm start` with `NODE_ENV=production`.

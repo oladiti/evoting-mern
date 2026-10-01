@@ -3,9 +3,20 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import crypto from 'crypto';
+import { env } from '../config/env.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const uploadsDir = path.resolve(__dirname, '../../uploads');
+
+// Unset in development, so uploads/ stays inside the repo exactly as before.
+// Set in a deployed environment, where the container filesystem is ephemeral and
+// would discard every enrolled face on the next deploy. See env.js for why this
+// has to be a path and not a bool.
+//
+// path.resolve rather than using the value verbatim: UPLOADS_DIR arrives from the
+// environment, and a relative value there would resolve against process.cwd(),
+// which is not this file's directory - so uploads written by one process and
+// served by another would disagree if either started somewhere else.
+export const uploadsDir = env.UPLOADS_DIR ? path.resolve(env.UPLOADS_DIR) : path.resolve(__dirname, '../../uploads');
 export const facesDir = path.join(uploadsDir, 'faces');
 
 fs.mkdirSync(uploadsDir, { recursive: true });

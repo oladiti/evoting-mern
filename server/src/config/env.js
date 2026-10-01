@@ -72,6 +72,16 @@ export const env = {
   // Flip to 'enforce' once the console is clean. 'off' sends no policy at all.
   CSP_MODE: oneOf(process.env.CSP_MODE, ['off', 'report-only', 'enforce'], 'report-only'),
   DB_URI: process.env.DB_URI || 'mongodb://127.0.0.1:27017/evoting',
+  // Where candidate and face photos are written. Left empty in development, which
+  // is what keeps uploads/ inside the repo where it has always lived.
+  //
+  // It has to be overridable because the directory is local disk, and the disk a
+  // container gets is ephemeral: on Render every deploy and every restart throws
+  // it away, taking enrolled face descriptors' photos with it. Face enrolment is
+  // not recoverable automatically - a voter whose photo is gone has to re-enrol
+  // by hand. Point this at a mounted persistent disk in any deployed
+  // environment. See render.yaml.
+  UPLOADS_DIR: process.env.UPLOADS_DIR || '',
   MYSQL: {
     host: process.env.MYSQL_HOST || 'localhost',
     port: num(process.env.MYSQL_PORT, 3306),

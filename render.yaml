@@ -1,0 +1,123 @@
+# One Render web service serves the API *and* the built client.
+#
+# This is deliberate, and it is not a shortcut. The client addresses the API with
+# relative paths only (client/src/lib/api.js calls fetch('/api/...'), never an
+# absolute origin), which works because in production Express serves client/dist
+# from the same host - see server/src/app.js. Hosting the client as a separate
+# static site does not merely "need CORS": every request would go to the static
+# site's own origin, and the CSRF cookie is read from document.cookie, so a token
+# set by another domain is unreadable and every POST 403s regardless of how CORS
+# is configured. Same-origin is the architecture, not an accident of the dev
+# proxy.
+#
+# Secrets are NOT in this file. DB_URI, JWT_SECRET, MAIL_* and the reCAPTCHA keys
+# are set in the Render dashboard and marked sync:false so a repo change cannot
+# overwrite them. See README.md "Deployment".
+
+services:
+  - type: web
+    # The hostname the static site used before this Blueprint existed. Reusing it
+    # means existing bookmarks, CLIENT_URL and ALLOWED_ORIGINS keep pointing at a
+    # live origin instead of a dead one.
+    #
+    # Render will not release the name while another service still holds it, so
+    # delete the old static service BEFORE creating this Blueprint. Otherwise the
+    # name is taken and the Blueprint fails.
+    name: evoting-mern
+    runtime: node
+
+    # npm ci, not npm install: this is a lockfile-driven deploy, and install can
+    # resolve differently from what was tested.
+    #
+    # The build has to run the client build, or client/dist will not exist and the
+    # static handler in app.js will skip serving the SPA entirely - the service
+    # would answer /api/* correctly and 404 every page.
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+
+    # Not just an availability check. Render refuses traffic to an instance whose
+    # health check fails, and app.js answers 503 while Mongo is still connecting,
+    # so this is also what stops a request arriving during the ~10s Atlas connect
+    # window from being failed at the load balancer instead of being waited on by
+    # awaitDatabase, which exists precisely to handle that window gracefully.
+    healthCheckPath: /api/health
+
+    # Not the free plan: Render does not attach persistent disks to free instances,
+    # so the disk below is silently ignored and every face enrolment is lost on
+    # each deploy. A face photo cannot be recovered - the voter re-enrols by hand.
+    plan: starter
+
+    # Candidate and face photos. Local disk inside the container is ephemeral on
+    # every deploy and restart; this mount is what makes UPLOADS_DIR worth having.
+    disk:
+      name: evoting-uploads
+      mountPath: /var/data/uploads
+      sizeGB: 1
+
+    envVars:
+      # Values that are safe to commit - no secrets in them.
+      - key: NODE_ENV
+        value: production
+
+      # Read by server/src/middleware/upload.js. Left unset, uploads land in
+      # server/uploads inside the container and are wiped on the next deploy.
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
+
+      # Stay on report-only for the first deploy. 'enforce' blocks anything the
+      # policy names, so a wrong directive would blank the page or kill the
+      # reCAPTCHA widget outright. Watch the "[csp]" lines in the logs, and only
+      # flip this once they are clean across every feature including the camera.
+      - key: CSP_MODE
+        value: report-only
+
+      # Secrets. sync:false means Render keeps the dashboard value and ignores
+      # this file, which is what stops a deploy from resetting them to empty.
+      #
+      # CLIENT_URL and ALLOWED_ORIGINS are secrets only in the sense that you
+      # cannot know your own hostname before creating the service, so they are
+      # set in the dashboard once Render tells you the name. Both default to
+      # https://localhost:5173, which is wrong in production: CLIENT_URL builds
+      # every outbound email link, so password resets would point at a dev
+      # server, and ALLOWED_ORIGINS is the CSRF origin allowlist, so without your
+      # real origin every POST - register included - fails "Origin not allowed".
+      #
+      #   DB_URI              mongodb+srv://... MUST end in /evoting. A pathless URI
+      #                       silently connects to the database named "test".
+      #   JWT_SECRET          >= 32 chars, or the server refuses to boot.
+      #   CLIENT_URL          https://evoting-mern.onrender.com
+      #   ALLOWED_ORIGINS     https://evoting-mern.onrender.com
+      #   RECAPTCHA_SITE_KEY / RECAPTCHA_SECRET_KEY
+      #                       Required if reCAPTCHA is enabled in Admin > Settings.
+      #                       Without them the server refuses register/login/vote
+      #                       with 503 rather than running unprotected.
+      #   MAIL_HOST / MAIL_PORT / MAIL_SECURE / MAIL_USERNAME / MAIL_PASSWORD /
+      #   MAIL_FROM / MAIL_TO
+      #                       For verification and reset email. Values stored in
+      #                       Admin > Settings override these except the password.
+      - key: DB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: RECAPTCHA_SITE_KEY
+        sync: false
+      - key: RECAPTCHA_SECRET_KEY
+        sync: false
+      - key: MAIL_HOST
+        sync: false
+      - key: MAIL_PORT
+        sync: false
+      - key: MAIL_SECURE
+        sync: false
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: MAIL_TO
+        sync: false

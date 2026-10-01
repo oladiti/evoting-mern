@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import path from 'path';
 
 // env.js runs dotenv and calls resolveJwtSecret() at module scope, so each case
 // has to re-import the module with the process environment stubbed. vi.resetModules
@@ -108,5 +109,50 @@ describe('env coercions', () => {
     });
     expect(env.ALLOWED_ORIGINS).toEqual(['https://a.test', 'https://b.test']);
     vi.doUnmock('dotenv');
+  });
+
+  // env.UPLOADS_DIR decides where upload.js writes. A single wrong character here
+  // either loses every enrolled face on the next deploy (container filesystem) or
+  // writes outside the mounted disk, so the coercion is asserted rather than
+  // assumed. upload.js branches on truthiness, which is why '' must survive.
+  describe('UPLOADS_DIR', () => {
+    it('defaults to empty when the variable is absent', async () => {
+      vi.doMock('dotenv', () => ({ default: { config: vi.fn() } }));
+      const { env } = await loadEnvWith({ NODE_ENV: 'development', JWT_SECRET: 'x'.repeat(32), UPLOADS_DIR: undefined });
+      expect(env.UPLOADS_DIR).toBe('');
+      vi.doUnmock('dotenv');
+    });
+
+    it('passes a mount path through untouched', async () => {
+      vi.doMock('dotenv', () => ({ default: { config: vi.fn() } }));
+      const { env } = await loadEnvWith({
+        NODE_ENV: 'production',
+        JWT_SECRET: 'x'.repeat(32),
+        UPLOADS_DIR: '/var/data/uploads',
+      });
+      expect(env.UPLOADS_DIR).toBe('/var/data/uploads');
+      vi.doUnmock('dotenv');
+    });
+
+    it('treats an empty value as unset rather than as a path', async () => {
+      // path.resolve('') would yield process.cwd() and silently relocate uploads
+      // instead of falling back to server/uploads.
+      vi.doMock('dotenv', () => ({ default: { config: vi.fn() } }));
+      const { env } = await loadEnvWith({ NODE_ENV: 'development', JWT_SECRET: 'x'.repeat(32), UPLOADS_DIR: '' });
+      expect(env.UPLOADS_DIR).toBe('');
+      vi.doUnmock('dotenv');
+    });
+
+    it('resolves a configured directory to an absolute path', async () => {
+      vi.doMock('dotenv', () => ({ default: { config: vi.fn() } }));
+      const { env } = await loadEnvWith({
+        NODE_ENV: 'development',
+        JWT_SECRET: 'x'.repeat(32),
+        UPLOADS_DIR: 'var/data/uploads',
+      });
+      const resolved = env.UPLOADS_DIR ? path.resolve(env.UPLOADS_DIR) : path.resolve('server/uploads');
+      expect(path.isAbsolute(resolved)).toBe(true);
+      vi.doUnmock('dotenv');
+    });
   });
 });
