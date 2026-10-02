@@ -26,13 +26,35 @@ services:
     name: evoting-mern
     runtime: node
 
+    # Pinned, not left to engines.
+    #
+    # package.json declares node >=20.11, which is a floor with no ceiling, so
+    # Render resolved it to the newest runtime it offers and quietly deployed on
+    # Node 26 on this deploy. That is a 22-major jump over what was tested, and
+    # because the range permits anything the deploy's runtime can change without
+    # a diff - the next Node release lands and this service starts running on it.
+    # Pin it so the runtime is a reviewed change rather than a surprise.
+    #
+    # Node 22 is the active LTS line and satisfies the engines field.
+    nodeVersion: 22.x
+
     # npm ci, not npm install: this is a lockfile-driven deploy, and install can
     # resolve differently from what was tested.
     #
     # The build has to run the client build, or client/dist will not exist and the
     # static handler in app.js will skip serving the SPA entirely - the service
     # would answer /api/* correctly and 404 every page.
-    buildCommand: npm ci && npm run build
+    #
+    # --include=dev is load-bearing, and it is here because of NODE_ENV=production
+    # below. npm treats that variable as "production install" and omits
+    # devDependencies, but vite is a devDependency of the client workspace - it is
+    # a build-time tool, so it is legitimately absent from a production runtime
+    # and legitimately required here. Without the flag the install dropped 402 of
+    # the lockfile's 550 entries (145 installed, 148 audited) and the build died
+    # with "sh: 1: vite: not found". The two settings look contradictory and are
+    # not: dev dependencies are needed to BUILD, NODE_ENV=production is needed to
+    # RUN. --include=dev is what lets both be true at once.
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
 
     # Not just an availability check. Render refuses traffic to an instance whose
@@ -56,6 +78,11 @@ services:
 
     envVars:
       # Values that are safe to commit - no secrets in them.
+      #
+      # NODE_ENV=production is what makes the auth and CSRF cookies carry Secure
+      # (csrf.js, tokens.js) and what stops middleware/error.js echoing raw error
+      # text to the browser. It is also the reason the build command above needs
+      # --include=dev. Both are intentional; see buildCommand.
       - key: NODE_ENV
         value: production
 
